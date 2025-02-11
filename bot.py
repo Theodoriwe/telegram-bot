@@ -15,82 +15,110 @@ from telegram.ext import (
 import psycopg2
 
 # Настройки
-TOKEN = os.getenv('BOT_TOKEN')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # ID вашего канала (пока оставьте пустым)
-ADMIN_ID = os.getenv('ADMIN_ID')  # Ваш ID в Telegram
-DATABASE_URL = os.getenv('DATABASE_URL')
+TOKEN = os.getenv('7665899248:AAF5nv1MAN_t2pnYKoNJeUnrE4qEj8E60yY')
+CHANNEL_ID = os.getenv('-1002429293077')  # ID вашего канала
+ADMIN_ID = os.getenv('755781875')  # Ваш ID в Telegram
+
+# Проверка переменных окружения
+required_env_vars = ['BOT_TOKEN', 'CHANNEL_ID', 'ADMIN_ID', 'DATABASE_URL']
+for var in required_env_vars:
+    if not os.getenv(var):
+        raise ValueError(f"Missing environment variable: {var}")
+
+# Логирование
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 # Подключение к БД
-conn = psycopg2.connect(DATABASE_URL)
-cursor = conn.cursor()
+def get_db_connection():
+    return psycopg2.connect(os.getenv('DATABASE_URL') + "?sslmode=require")
 
 # Создание таблицы
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        user_id BIGINT PRIMARY KEY,
-        subscribed BOOLEAN DEFAULT FALSE,
-        promo_code VARCHAR(20),
-        promo_issued TIMESTAMP
-    )
-''')
-conn.commit()
+def init_db():
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY,
+                    subscribed BOOLEAN DEFAULT FALSE,
+                    promo_code VARCHAR(20),
+                    promo_issued TIMESTAMP
+                )
+            ''')
+            conn.commit()
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+init_db()
 
+# Генерация уникального промокода
+def generate_unique_promo_code(cursor):
+    while True:
+        promo_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        cursor.execute("SELECT COUNT(*) FROM users WHERE promo_code = %s", (promo_code,))
+        if not cursor.fetchone()[0]:
+            return promo_code
+
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
-        cursor.execute('INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING', (user_id,))
-        conn.commit()
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING', (user_id,))
+                conn.commit()
     except Exception as e:
-        logging.error(f"Database error: {e}")
+        logger.error(f"Database error: {e}")
 
     keyboard = [[InlineKeyboardButton("Я подписался! Получить промокод", callback_data='check_sub')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await update.message.reply_text(
         f"📢 Подпишись на наш канал: {os.getenv('CHANNEL_LINK')}\n"
         "🎁 И получи промокод на бесплатное посещение!",
         reply_markup=reply_markup
     )
 
+# Обработка кнопки
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-
     await query.answer()
 
     try:
-        # Проверка подписки
-        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        subscribed = member.status not in ['left', 'kicked']
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # Проверка подписки
+                member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+                subscribed = member.status in ['member', 'administrator', 'creator']
 
-        # Проверка наличия промокода
-        cursor.execute('SELECT promo_code FROM users WHERE user_id = %s', (user_id,))
-        promo_data = cursor.fetchone()
+                # Проверка наличия промокода
+                cursor.execute('SELECT promo_code FROM users WHERE user_id = %s', (user_id,))
+                promo_data = cursor.fetchone()
 
-        if promo_data and promo_data[0]:
-            await query.edit_message_text("⚠ Вы уже получали промокод. Проверьте предыдущие сообщения.")
-            return
+                if promo_data and promo_data[0]:
+                    await query.edit_message_text("⚠ Вы уже получали промокод. Проверьте предыдущие сообщения.")
+                    return
 
-        if subscribed:
-            # Генерация промокода
-            promo_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-            cursor.execute('''
-                UPDATE users 
-                SET subscribed = TRUE, promo_code = %s, promo_issued = %s 
-                WHERE user_id = %s
-            ''', (promo_code, datetime.now(), user_id))
-            conn.commit()
-
-            await query.edit_message_text(f"🎉 Ваш промокод: {promo_code}\n\nСохраните его!")
-        else:
-            await query.edit_message_text("❌ Вы не подписаны на канал. Подпишитесь и попробуйте снова.")
-
+                if subscribed:
+                    # Генерация промокода
+                    promo_code = generate_unique_promo_code(cursor)
+                    cursor.execute('''
+                        UPDATE users 
+                        SET subscribed = TRUE, promo_code = %s, promo_issued = %s 
+                        WHERE user_id = %s
+                    ''', (promo_code, datetime.now(), user_id))
+                    conn.commit()
+                    await query.edit_message_text(f"🎉 Ваш промокод: {promo_code}\n\nСохраните его!")
+                else:
+                    await query.edit_message_text("❌ Вы не подписаны на канал. Подпишитесь и попробуйте снова.")
     except Exception as e:
-        logging.error(f"Error: {e}")
+        logger.error(f"Error: {e}")
         await query.edit_message_text("⚠ Произошла ошибка. Попробуйте позже.")
 
+# Рассылка сообщений
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != ADMIN_ID:
         return
@@ -100,22 +128,24 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Использование: /broadcast Ваше сообщение")
         return
 
-    cursor.execute('SELECT user_id FROM users')
-    users = cursor.fetchall()
-    
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT user_id FROM users")
+            users = cursor.fetchall()
+
+    success_count = 0
     for user in users:
         try:
             await context.bot.send_message(chat_id=user[0], text=message)
+            success_count += 1
         except Exception as e:
-            logging.error(f"Failed to send to {user[0]}: {e}")
+            logger.error(f"Failed to send to {user[0]}: {e}")
 
-    await update.message.reply_text(f"✅ Рассылка отправлена {len(users)} пользователям")
+    await update.message.reply_text(f"✅ Рассылка отправлена {success_count} пользователям")
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
-
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(CommandHandler('broadcast', broadcast))
-
     application.run_polling()
