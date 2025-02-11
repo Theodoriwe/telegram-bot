@@ -40,9 +40,9 @@ from telegram.ext import (
 import psycopg2
 
 # Настройки
-TOKEN = os.getenv('7665899248:AAF5nv1MAN_t2pnYKoNJeUnrE4qEj8E60yY')
-CHANNEL_ID = os.getenv('-1002429293077')  # ID вашего канала
-ADMIN_ID = os.getenv('755781875')  # Ваш ID в Telegram
+TOKEN = os.getenv('BOT_TOKEN')
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # ID вашего канала
+ADMIN_ID = os.getenv('ADMIN_ID')  # Ваш ID в Telegram
 
 # Проверка переменных окружения
 required_env_vars = ['BOT_TOKEN', 'CHANNEL_ID', 'ADMIN_ID', 'DATABASE_URL']
