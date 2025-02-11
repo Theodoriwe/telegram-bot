@@ -1,4 +1,29 @@
 import os
+import psycopg2
+
+def init_db():
+    try:
+        conn = psycopg2.connect(os.getenv("DATABASE_URL") + "?sslmode=require")
+        with conn.cursor() as cursor:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY,
+                    subscribed BOOLEAN DEFAULT FALSE,
+                    promo_code VARCHAR(20),
+                    promo_issued TIMESTAMP
+                )
+            ''')
+        conn.commit()
+        print("Database initialized successfully!")
+    except Exception as e:
+        print(f"Failed to initialize database: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+if __name__ == "__main__":
+    init_db()
+    # Остальной код вашего бота
 import logging
 from datetime import datetime
 import random
