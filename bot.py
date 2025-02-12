@@ -137,6 +137,18 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ''', (promo_code, datetime.now(), user_id))
                     conn.commit()
                     await query.edit_message_text(f"🎉 Ваш промокод: {promo_code}\n\nСохраните его!")
+                     # Отправляем информацию в группу
+                    group_message = f"-New Promo Code Issued-\n\n" \
+                                    f"👤 Пользователь: `{user_id}`\n" \
+                                    f"🎁 Промокод: `{promo_code}`"
+                    try:
+                        await context.bot.send_message(
+                            chat_id=GROUP_ID,
+                            text=group_message,
+                            parse_mode="Markdown"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send promo code to group: {e}")
                 else:
                     await query.edit_message_text("❌ Вы не подписаны на канал. Подпишитесь и попробуйте снова.")
     except Exception as e:
