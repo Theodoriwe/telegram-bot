@@ -43,6 +43,7 @@ import psycopg2
 TOKEN = os.getenv('BOT_TOKEN')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # ID вашего канала
 ADMIN_ID = os.getenv('ADMIN_ID')  # Ваш ID в Telegram
+GROUP_ID = os.getenv('GROUP_ID')
 
 # Проверка переменных окружения
 required_env_vars = ['BOT_TOKEN', 'CHANNEL_ID', 'ADMIN_ID', 'DATABASE_URL']
